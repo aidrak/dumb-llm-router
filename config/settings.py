@@ -63,17 +63,11 @@ class Settings:
         """Update properties from YAML config"""
         # Model routing
         routing = config.get("routing", {})
-        self.classifier_model = routing.get("classifier_model")
-        self.simple_no_research_model = routing.get("simple_no_research_model")
-        self.simple_research_model = routing.get("simple_research_model")
-        self.hard_no_research_model = routing.get("hard_no_research_model")
-        self.hard_research_model = routing.get("hard_research_model")
-        self.escalation_model = routing.get("escalation_model")
+        self.primary_model = routing.get("primary_model")
         self.fallback_model = routing.get("fallback_model")
         
         # If any are None, fall back to environment variables
-        if not all([self.classifier_model, self.simple_no_research_model, self.simple_research_model,
-                   self.hard_no_research_model, self.hard_research_model, self.escalation_model, self.fallback_model]):
+        if not all([self.primary_model, self.fallback_model]):
             print("Some model names missing from config, checking environment variables...")
             self._fill_missing_from_env()
         
@@ -89,12 +83,7 @@ class Settings:
     
     def _update_from_env(self):
         """Fallback to environment variables"""
-        self.classifier_model = os.getenv("CLASSIFIER_MODEL")
-        self.simple_no_research_model = os.getenv("SIMPLE_NO_RESEARCH_MODEL")
-        self.simple_research_model = os.getenv("SIMPLE_RESEARCH_MODEL")
-        self.hard_no_research_model = os.getenv("HARD_NO_RESEARCH_MODEL")
-        self.hard_research_model = os.getenv("HARD_RESEARCH_MODEL")
-        self.escalation_model = os.getenv("ESCALATION_MODEL")
+        self.primary_model = os.getenv("PRIMARY_MODEL")
         self.fallback_model = os.getenv("FALLBACK_MODEL")
         
         # Apply final defaults only if environment variables are also missing
@@ -108,22 +97,12 @@ class Settings:
     
     def _fill_missing_from_env(self):
         """Fill in any missing values with environment variables or fail if not configured"""
-        self.classifier_model = self.classifier_model or os.getenv("CLASSIFIER_MODEL")
-        self.simple_no_research_model = self.simple_no_research_model or os.getenv("SIMPLE_NO_RESEARCH_MODEL")
-        self.simple_research_model = self.simple_research_model or os.getenv("SIMPLE_RESEARCH_MODEL")
-        self.hard_no_research_model = self.hard_no_research_model or os.getenv("HARD_NO_RESEARCH_MODEL")
-        self.hard_research_model = self.hard_research_model or os.getenv("HARD_RESEARCH_MODEL")
-        self.escalation_model = self.escalation_model or os.getenv("ESCALATION_MODEL")
+        self.primary_model = self.primary_model or os.getenv("PRIMARY_MODEL")
         self.fallback_model = self.fallback_model or os.getenv("FALLBACK_MODEL")
         
         # Check for missing required configurations
         missing = []
-        if not self.classifier_model: missing.append("classifier_model")
-        if not self.simple_no_research_model: missing.append("simple_no_research_model")
-        if not self.simple_research_model: missing.append("simple_research_model")
-        if not self.hard_no_research_model: missing.append("hard_no_research_model")
-        if not self.hard_research_model: missing.append("hard_research_model")
-        if not self.escalation_model: missing.append("escalation_model")
+        if not self.primary_model: missing.append("primary_model")
         if not self.fallback_model: missing.append("fallback_model")
         
         if missing:

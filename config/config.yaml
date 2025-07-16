@@ -4,13 +4,8 @@
 # Model Routing Configuration
 # These are logical model names that must match entries in models.json
 routing:
-  classifier_model: classifier
-  simple_no_research_model: 4.1-nano           # Route simple requests to capable model
-  simple_research_model: 4o-mini                # Route simple research to capable model  
-  hard_no_research_model: Flash-No-Research    # Heavy context processing
-  hard_research_model: Flash-Research          # Complex research tasks
-  escalation_model: Gemini-Pro                  # User-requested escalation
-  fallback_model: Flash-No-Research                 # Fallback when other models fail
+  primary_model: "Flash-Research"
+  fallback_model: "default"
 
 # Context Detection Settings
 context_detection:

@@ -6,24 +6,16 @@ from typing import Dict, Any, List
 from fastapi import HTTPException
 
 from clients.base import get_llm_client_and_model_details
-from services.classifier import classifier
 from config.models import ChatRequest, Message
 from config.settings import settings
 from utils.logger import setup_logger
+from services.conversation_state import conversation_state_manager
 
 logger = setup_logger(__name__)
 
 class SmartRouter:
     def __init__(self):
         pass
-    
-    def _get_model_mappings(self) -> Dict[str, str]:
-        return {
-            "simple_no_research": settings.simple_no_research_model,
-            "simple_research": settings.simple_research_model,
-            "hard_no_research": settings.hard_no_research_model,
-            "hard_research": settings.hard_research_model,
-        }
     
     def _get_text_from_content(self, content: Any) -> str:
         if isinstance(content, str):
@@ -115,14 +107,16 @@ class SmartRouter:
         logger.info("❌ VISION NOT REQUIRED")
         return False
 
-    def _determine_model_tier(self, category: str, needs_vision: bool, needs_heavy_context: bool) -> str:
-        if needs_vision or needs_heavy_context:
-            return "hard"
-        if "hard" in category:
-            return "hard"
-        if "simple" in category:
-            return "simple"
-        return "simple"
+    def _is_research_request(self, text: str) -> bool:
+        """Check if the text contains research-related keywords"""
+        research_keywords = [
+            "research", "look up", "lookup", "find out", "search for", 
+            "what is", "who is", "when is", "where is", "how is",
+            "tell me about", "get information on", "what are the latest",
+            "can you lookup", "please lookup", "can you look up", "please look up"
+        ]
+        text_lower = text.lower()
+        return any(keyword in text_lower for keyword in research_keywords)
 
     async def route_and_process(self, chat_request: ChatRequest, auth_header: str) -> Dict[str, Any]:
         settings.reload_if_changed()
@@ -146,48 +140,27 @@ class SmartRouter:
                     logger.info(f"   Part {j+1}: {part.get('type', 'unknown')}")
         
         # Get conversation state
-        conversation_state = {} # This will be replaced by a call to the conversation state manager
+        conversation_state = conversation_state_manager.get_or_create_state(messages)
 
         # Check for vision and heavy context requirements first
         needs_vision = self._should_use_vision_model(messages, conversation_state)
-        needs_heavy_context = self._detect_heavy_context(messages)
         
-        if needs_vision:
-            logger.info("🖼️ Vision model required - routing to vision-capable model.")
-            target_model = settings.hard_no_research_model
-            model_tier = "hard"
-            
-        elif needs_heavy_context:
-            logger.info("📚 Heavy context detected, routing to heavy model.")
-            target_model = settings.hard_no_research_model
-            model_tier = "hard"
-            
-        elif classifier.is_title_generation_request([msg.dict() for msg in messages]):
-            logger.info("🏷️ Title generation request detected, routing to simple model.")
-            target_model = settings.simple_no_research_model
-            model_tier = "simple"
-            
-        elif classifier.is_escalation_request(user_prompt_text):
-            logger.info("⬆️ Escalation request detected, routing to escalation model.")
-            target_model = settings.escalation_model
-            model_tier = "escalation"
-            
-        elif classifier.is_research_request(user_prompt_text):
+        is_research = self._is_research_request(user_prompt_text)
+        
+        if is_research or conversation_state.perplexity_sticky_count > 0:
             logger.info("🔍 Research request detected, routing to Perplexity.")
             target_model = "Perplexity-Research"
-            model_tier = "research"
-            
         else:
-            # Normal classification handles simple_research and hard_research
-            message_dicts = [msg.dict() for msg in messages]
-            category = await classifier.classify_message(message_dicts)
-            model_mappings = self._get_model_mappings()
-            target_model = model_mappings.get(category, settings.fallback_model)
-            model_tier = self._determine_model_tier(category, needs_vision, needs_heavy_context)
-            
-            logger.info(f"🎯 Classified as '{category}', routing to '{target_model}'")
-
+            target_model = settings.primary_model
+        
         logger.info(f"🎯 TARGET MODEL SELECTED: {target_model}")
+        
+        conversation_state_manager.update_state_after_routing(
+            state=conversation_state,
+            selected_model=target_model,
+            model_tier="research" if is_research else "simple",
+            is_research=is_research
+        )
 
         client, model_id, model_type, api_params, system_prompt = get_llm_client_and_model_details(target_model)
         

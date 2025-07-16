@@ -43,4 +43,4 @@ def update_log_level():
             handler.setLevel(level)
 
 # Default logger for the application
-logger = setup_logger("smart-llm-router")
+logger = setup_logger("dumb-llm-router")

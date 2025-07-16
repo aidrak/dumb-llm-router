@@ -1,14 +1,5 @@
 {
   "models": {
-    "classifier": {
-      "provider": "openai",
-      "model_id": "gpt-4.1-nano",
-      "type": "chat",
-      "system_prompt_file": "prompts/classifier_prompt.txt",
-      "parameters": {
-        "max_tokens": 25
-      }
-    },
     "4.1-nano": {
       "provider": "openai",
       "model_id": "gpt-4.1-nano",

@@ -1,4 +1,4 @@
-# Smart LLM Router
+# Dumb LLM Router
 
 An intelligent routing system for multiple AI providers that automatically selects the best model based on request complexity, research needs, and context. Perfect for OpenWebUI integration.
 
@@ -48,8 +48,8 @@ The Smart LLM Router intelligently classifies incoming requests and routes them 
 
 1. **Clone the repository**:
 ```bash
-git clone https://github.com/your-username/smart-llm-router.git
-cd smart-llm-router
+git clone https://github.com/your-username/dumb-llm-router.git
+cd dumb-llm-router
 ```
 
 2. **Create environment file**:
@@ -67,7 +67,7 @@ docker-compose up -d
 
 1. **Add template URL** in Unraid Apps:
 ```
-https://raw.githubusercontent.com/your-username/smart-llm-router/main/unraid-template.xml
+https://raw.githubusercontent.com/your-username/dumb-llm-router/main/unraid-template.xml
 ```
 
 2. **Configure required settings**:
@@ -146,7 +146,7 @@ logging:
    - Add **OpenAI API**:
      - Base URL: `http://your-server-ip:8005/v1`
      - API Key: `any-key-works`
-   - The router will appear as `smart-llm-router`
+   - The router will appear as `dumb-llm-router`
 
 3. **Configure Image Generation**:
    - Go to **Admin Panel** → **Settings** → **Images**
@@ -157,7 +157,7 @@ logging:
 
 ### Usage in OpenWebUI
 
-- **Chat**: Select `smart-llm-router` as your model
+- **Chat**: Select `dumb-llm-router` as your model
 - **Images**: Use the 🖼️ button for image generation
 - **Research**: Router automatically detects and handles research requests
 - **Vision**: Upload images and ask questions about them
@@ -178,7 +178,7 @@ curl -X POST http://localhost:8005/v1/chat/completions \
   -H "Authorization: Bearer any-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "smart-llm-router",
+    "model": "dumb-llm-router",
     "messages": [
       {"role": "user", "content": "Research the latest developments in AI"}
     ]
@@ -191,8 +191,8 @@ curl -X POST http://localhost:8005/v1/chat/completions \
 
 1. **Clone and setup**:
 ```bash
-git clone https://github.com/your-username/smart-llm-router.git
-cd smart-llm-router
+git clone https://github.com/your-username/dumb-llm-router.git
+cd dumb-llm-router
 pip install -r requirements.txt
 ```
 
@@ -210,15 +210,15 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ### Building Docker Image
 
 ```bash
-docker build -t smart-llm-router .
-docker run -p 8005:8000 --env-file .env smart-llm-router
+docker build -t dumb-llm-router .
+docker run -p 8005:8000 --env-file .env dumb-llm-router
 ```
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   OpenWebUI     │───▶│ Smart LLM Router │───▶│   AI Providers  │
+│   OpenWebUI     │───▶│ Dumb LLM Router  │───▶│   AI Providers  │
 │                 │    │                  │    │                 │
 │ - Chat UI       │    │ - Classification │    │ - OpenAI        │
 │ - Image Gen     │    │ - Model Selection│    │ - Gemini        │
@@ -241,10 +241,10 @@ docker run -p 8005:8000 --env-file .env smart-llm-router
 **Container won't start:**
 ```bash
 # Check logs
-docker logs smart-llm-router
+docker logs dumb-llm-router
 
 # Verify API keys are set
-docker exec smart-llm-router env | grep API_KEY
+docker exec dumb-llm-router env | grep API_KEY
 ```
 
 **OpenWebUI can't connect:**
@@ -272,7 +272,7 @@ Set `LOG_LEVEL=DEBUG` to see detailed routing decisions:
 docker-compose down
 echo "LOG_LEVEL=DEBUG" >> .env
 docker-compose up -d
-docker logs -f smart-llm-router
+docker logs -f dumb-llm-router
 ```
 
 ## 🔒 Security
@@ -298,8 +298,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-username/smart-llm-router/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-username/smart-llm-router/discussions)
+- **Issues**: [GitHub Issues](https://github.com/your-username/dumb-llm-router/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-username/dumb-llm-router/discussions)
 
 ## 🙏 Acknowledgments
 

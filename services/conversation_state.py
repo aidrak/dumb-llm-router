@@ -17,6 +17,7 @@ class ConversationState:
     vision_sticky_count: int = 0  # Messages to stay on vision model
     heavy_context_active: bool = False
     heavy_context_sticky_count: int = 0
+    perplexity_sticky_count: int = 0
     message_count_since_upgrade: int = 0
     last_activity: float = 0.0
     topic_keywords: List[str] = None
@@ -153,6 +154,7 @@ class ConversationStateManager:
                 # Reset sticky states but keep some context
                 state.vision_sticky_count = 0
                 state.heavy_context_sticky_count = 0
+                state.perplexity_sticky_count = 0
                 state.message_count_since_upgrade = 0
                 state.active_model_tier = "simple"
                 # Don't reset has_vision_content immediately - let it decay naturally
@@ -174,7 +176,8 @@ class ConversationStateManager:
                                  selected_model: str, 
                                  model_tier: str,
                                  had_vision: bool = False,
-                                 had_heavy_context: bool = False):
+                                 had_heavy_context: bool = False,
+                                 is_research: bool = False):
         """Update state after routing decision is made"""
         state.last_model_used = selected_model
         state.last_activity = time.time()
@@ -198,6 +201,12 @@ class ConversationStateManager:
             state.heavy_context_sticky_count -= 1
             if state.heavy_context_sticky_count == 0:
                 state.heavy_context_active = False
+
+        # Handle perplexity stickiness
+        if is_research:
+            state.perplexity_sticky_count = 3 # Stay sticky for 3 messages
+        elif state.perplexity_sticky_count > 0:
+            state.perplexity_sticky_count -= 1
         
         # Update tier and message count
         if model_tier != state.active_model_tier:
@@ -229,6 +238,7 @@ class ConversationStateManager:
             "vision_sticky_count": state.vision_sticky_count,
             "heavy_context_active": state.heavy_context_active,
             "heavy_context_sticky_count": state.heavy_context_sticky_count,
+            "perplexity_sticky_count": state.perplexity_sticky_count,
             "message_count_since_upgrade": state.message_count_since_upgrade,
             "topic_keywords": state.topic_keywords[:5],  # First 5 keywords
             "total_conversations_tracked": len(self.states)

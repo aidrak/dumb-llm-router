@@ -48,12 +48,12 @@ async def list_models(authorization: str = Header(None)):
         "object": "list",
         "data": [
             {
-                "id": "smart-llm-router",
+                "id": "dumb-llm-router",
                 "object": "model",
                 "created": int(time.time()),
-                "owned_by": "smart-router",
+                "owned_by": "user",
                 "permission": [],
-                "root": "smart-llm-router",
+                "root": "dumb-llm-router",
                 "parent": None
             }
         ]
