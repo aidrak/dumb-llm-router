@@ -1,0 +1,57 @@
+# GitHub Actions workflow to build and push Docker images to GitHub Container Registry
+# 
+# SETUP REQUIRED:
+# 1. Create GitHub Personal Access Token:
+#    - Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+#    - Generate new token with 'write:packages' permission
+# 2. Add token to repository secrets:
+#    - Repo Settings → Secrets and variables → Actions
+#    - Add new repository secret: GHCR_TOKEN = your token value
+# 3. Use in Unraid as: ghcr.io/aidrak/repo-name:latest
+
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
