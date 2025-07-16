@@ -3,6 +3,10 @@
 .env.local
 .env.*.local
 
+# Personal
+mainstream/
+personal/
+
 # Logs
 logs
 *.log
