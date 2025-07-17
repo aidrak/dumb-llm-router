@@ -24,33 +24,58 @@ class SmartRouter:
                         return True
         return False
 
+    def _extract_system_prompt_from_messages(self, messages: List[Message]) -> tuple[List[Message], str]:
+        """Extract system prompt from messages if present, return cleaned messages and system prompt"""
+        system_prompt_override = None
+        cleaned_messages = []
+        
+        for message in messages:
+            if message.role == "system":
+                # Found a system message - use it as override
+                if isinstance(message.content, str):
+                    system_prompt_override = message.content
+                    logger.info(f"📝 System prompt override detected: '{system_prompt_override[:100]}...'")
+                # Don't add system messages to cleaned_messages - they're handled separately
+            else:
+                cleaned_messages.append(message)
+        
+        return cleaned_messages, system_prompt_override
+
     async def route_and_process(self, chat_request: ChatRequest, auth_header: str) -> Dict[str, Any]:
         messages = chat_request.messages
         if not messages:
             raise HTTPException(status_code=400, detail="No messages provided.")
 
-        last_message = messages[-1]
+        # Extract system prompt override from messages
+        cleaned_messages, system_prompt_override = self._extract_system_prompt_from_messages(messages)
+        
+        if not cleaned_messages:
+            raise HTTPException(status_code=400, detail="No user messages provided.")
+
+        last_message = cleaned_messages[-1]
         user_prompt_text = self._get_text_from_content(last_message.content)
         
         logger.info(f"🚀 Processing request: '{user_prompt_text[:100]}...'")
+        if system_prompt_override:
+            logger.info(f"📝 Using custom system prompt from OpenWebUI")
         
         # Simple routing logic: always use primary model
         # Gemini with Perplexity will handle search decisions automatically
         target_model = settings.primary_model
         
         # Ensure we have vision capability if needed
-        has_vision = self._has_vision_content(messages)
+        has_vision = self._has_vision_content(cleaned_messages)
         if has_vision:
             logger.info("🖼️ Vision content detected - using vision-capable model")
         
         logger.info(f"🎯 Selected model: {target_model}")
 
         # Get client and model details
-        client, model_id, model_type, api_params, system_prompt = get_llm_client_and_model_details(target_model)
+        client, model_id, model_type, api_params, default_system_prompt = get_llm_client_and_model_details(target_model)
         
         if not client or not model_id:
             logger.warning(f"⚠️ Target model '{target_model}' not available, trying fallback.")
-            client, model_id, model_type, api_params, system_prompt = get_llm_client_and_model_details(settings.fallback_model)
+            client, model_id, model_type, api_params, default_system_prompt = get_llm_client_and_model_details(settings.fallback_model)
             if not client or not model_id:
                 raise HTTPException(status_code=500, detail="No valid LLM client available")
             target_model = settings.fallback_model
@@ -58,16 +83,24 @@ class SmartRouter:
         provider_name = getattr(client, 'provider_name', 'unknown')
         logger.info(f"🔧 Using: {target_model} ({provider_name}: {model_id})")
 
+        # Choose which system prompt to use: only use OpenWebUI prompt, no fallback
+        final_system_prompt = system_prompt_override
+        
+        if final_system_prompt:
+            logger.debug(f"📝 Using OpenWebUI system prompt: '{final_system_prompt[:100]}...'")
+        else:
+            logger.debug(f"📝 No system prompt provided - using default behavior")
+
         try:
             temperature = chat_request.temperature if chat_request.temperature is not None else 0.7
-            message_dicts = [msg.dict() for msg in messages]
+            message_dicts = [msg.dict() for msg in cleaned_messages]
             
             response = await client.generate_response(
                 model_id=model_id,
                 messages=message_dicts,
                 temperature=temperature,
                 api_parameters=api_params,
-                system_prompt=system_prompt
+                system_prompt=final_system_prompt  # Use only OpenWebUI prompt, could be None
             )
             
             logger.info(f"✅ Response generated successfully")
