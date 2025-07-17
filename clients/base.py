@@ -60,24 +60,15 @@ def get_llm_client_and_model_details(logical_model_name: str) -> Tuple[Optional[
         return None, None, None, None, None
     
     # Import and initialize the appropriate client
-    if provider == "openai":
-        from clients.openai_client import OpenAIClient
-        client = OpenAIClient()
-    elif provider == "ollama":
-        from clients.ollama_client import OllamaClient
-        client = OllamaClient()
-    elif provider == "gemini":
+    if provider == "gemini":
         from clients.gemini_client import GeminiClient
         client = GeminiClient()
-    elif provider == "anthropic":
-        from clients.anthropic_client import AnthropicClient
-        client = AnthropicClient()
+    elif provider == "gemini_perplexity":
+        from clients.gemini_perplexity_client import GeminiWithPerplexityClient
+        client = GeminiWithPerplexityClient()
     elif provider == "perplexity":
         from clients.perplexity_client import PerplexityClient
         client = PerplexityClient()
-    elif provider == "gemini_image":
-        from clients.gemini_image_client import GeminiImageClient
-        client = GeminiImageClient()
     else:
         print(f"Error: Unsupported provider '{provider}' for model '{logical_model_name}'.")
         return None, None, None, None, None

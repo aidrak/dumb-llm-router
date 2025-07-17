@@ -43,6 +43,18 @@
         }
       }
     },
+    "Flash-Perplexity": {
+      "provider": "gemini_perplexity",
+      "model_id": "gemini-2.5-flash",
+      "type": "chat",
+      "system_prompt_file": "prompts/default_prompt.txt",
+      "parameters": {
+        "enable_perplexity_search": true,
+        "generation_config": {
+          "max_output_tokens": 4096
+        }
+      }
+    },
     "Gemini-Pro": {
       "provider": "gemini",
       "model_id": "gemini-2.5-pro",
@@ -50,6 +62,19 @@
       "system_prompt_file": "prompts/default_prompt.txt",      
       "parameters": {
         "enable_google_search": true,
+        "generation_config": {
+          "max_output_tokens": 8192,
+          "top_p": 0.95
+        }
+      }
+    },
+    "Gemini-Pro-Perplexity": {
+      "provider": "gemini_perplexity",
+      "model_id": "gemini-2.5-pro",
+      "type": "chat",
+      "system_prompt_file": "prompts/default_prompt.txt",      
+      "parameters": {
+        "enable_perplexity_search": true,
         "generation_config": {
           "max_output_tokens": 8192,
           "top_p": 0.95
