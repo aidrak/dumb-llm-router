@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
 from config.settings import settings
 
 class BaseLLMClient(ABC):
@@ -23,6 +23,46 @@ class BaseLLMClient(ABC):
                               system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """Generate a response using the LLM"""
         pass
+    
+    async def generate_streaming_response(self, 
+                                        model_id: str, 
+                                        messages: List[Dict[str, Any]], 
+                                        temperature: float,
+                                        api_parameters: Dict[str, Any],
+                                        system_prompt: Optional[str] = None) -> AsyncGenerator[Dict[str, Any], None]:
+        """Generate a streaming response using the LLM. Override in subclasses that support streaming."""
+        # Default implementation: fall back to non-streaming
+        response = await self.generate_response(model_id, messages, temperature, api_parameters, system_prompt)
+        
+        # Convert to streaming format
+        yield {
+            "id": "stream_fallback",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "delta": {"content": response["choices"][0]["message"]["content"]},
+                "finish_reason": None
+            }]
+        }
+        
+        # Send final chunk
+        yield {
+            "id": "stream_fallback",
+            "object": "chat.completion.chunk", 
+            "created": 0,
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "finish_reason": "stop"
+            }]
+        }
+    
+    def supports_streaming(self) -> bool:
+        """Override in subclasses to indicate streaming support"""
+        return False
     
     def is_available(self) -> bool:
         """Check if the client is available and initialized"""

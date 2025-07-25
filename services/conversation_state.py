@@ -41,11 +41,10 @@ class ConversationStateManager:
         if not messages:
             return "empty_conversation"
         
-        # Use first message content + conversation length as fingerprint
-        first_message_content = self._get_text_from_content(messages[0].content)
-        conversation_signature = f"{first_message_content[:200]}_{len(messages)}"
+        # Use hash of all message content as fingerprint
+        full_conversation_content = "".join([self._get_text_from_content(msg.content) for msg in messages])
         
-        return hashlib.md5(conversation_signature.encode()).hexdigest()[:16]
+        return hashlib.md5(full_conversation_content.encode()).hexdigest()[:16]
     
     def _get_text_from_content(self, content: Any) -> str:
         """Extract text content from message content"""

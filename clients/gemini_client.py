@@ -6,12 +6,13 @@ except ImportError:
     genai = None
     types = None
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncGenerator
 from clients.base import BaseLLMClient
 from config.settings import settings
 from utils.logger import setup_logger
 import base64
 import re
+import json
 
 logger = setup_logger(__name__)
 
@@ -31,6 +32,10 @@ class GeminiClient(BaseLLMClient):
         except Exception as e:
             logger.error(f"❌ Failed to initialize Gemini client: {e}")
             return False
+    
+    def supports_streaming(self) -> bool:
+        """Gemini supports streaming"""
+        return True
     
     def _convert_openai_content_to_gemini(self, content: Any) -> List[Any]:
         """Convert OpenAI-style content to Gemini format using the new SDK"""
@@ -197,3 +202,92 @@ class GeminiClient(BaseLLMClient):
         except Exception as e:
             logger.error(f"❌ Error calling Gemini {model_id}: {e}")
             raise
+    
+    async def generate_streaming_response(self, model_id: str, messages: List[Dict[str, Any]], 
+                                        temperature: float, api_parameters: Dict[str, Any],
+                                        system_prompt: Optional[str] = None) -> AsyncGenerator[Dict[str, Any], None]:
+        
+        # Build generation config
+        generation_config = {}
+        if not api_parameters.get("exclude_temperature", False):
+            generation_config["temperature"] = temperature
+        
+        generation_config_params = api_parameters.get("generation_config", {})
+        generation_config.update(generation_config_params)
+        
+        # Build generate_content parameters
+        generate_params = {}
+        if generation_config:
+            generate_params["config"] = types.GenerateContentConfig(
+                temperature=generation_config.get("temperature"),
+                max_output_tokens=generation_config.get("max_output_tokens")
+            )
+        
+        # Handle search functionality
+        enable_search = api_parameters.get("enable_google_search", False)
+        if enable_search and types:
+            try:
+                search_tool = types.Tool(google_search={})
+                if "config" not in generate_params:
+                    generate_params["config"] = types.GenerateContentConfig()
+                generate_params["config"].tools = [search_tool]
+                logger.info(f"✓ Enabled Google Search for {model_id}")
+            except Exception as e:
+                logger.warning(f"❌ Google Search setup failed for {model_id}: {e}")
+        
+        # Convert messages to Gemini format
+        try:
+            gemini_contents = self._build_gemini_contents(messages, system_prompt)
+            logger.debug(f"🔍 Converted {len(messages)} messages to Gemini contents for streaming")
+            
+            # Use streaming method
+            stream = self.client.models.generate_content_stream(
+                model=model_id,
+                contents=gemini_contents,
+                **generate_params
+            )
+            
+            logger.info(f"✅ Started streaming response from Gemini {model_id}")
+            
+            # Process streaming chunks
+            for chunk in stream:
+                if hasattr(chunk, 'text') and chunk.text:
+                    yield {
+                        "id": f"chatcmpl-{model_id}",
+                        "object": "chat.completion.chunk",
+                        "created": 0,
+                        "model": model_id,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk.text},
+                            "finish_reason": None
+                        }]
+                    }
+            
+            # Send final chunk
+            yield {
+                "id": f"chatcmpl-{model_id}",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop"
+                }]
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error streaming from Gemini {model_id}: {e}")
+            # Yield error chunk
+            yield {
+                "id": f"chatcmpl-{model_id}",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": f"Error: {str(e)}"},
+                    "finish_reason": "stop"
+                }]
+            }

@@ -1,107 +1,19 @@
 {
   "models": {
-    "4.1-nano": {
-      "provider": "openai",
-      "model_id": "gpt-4.1-nano",
-      "type": "chat",
-      "system_prompt_file": "prompts/default_prompt.txt",
-      "parameters": {
-        "max_tokens": 4096
-      }
-    },
-    "4o-mini": {
-      "provider": "openai",
-      "model_id": "gpt-4o-mini-search-preview",
-      "type": "chat",
-      "system_prompt_file": "prompts/default_prompt.txt",
-      "parameters": {
-        "web_search_options": {},
-        "exclude_temperature": true,
-        "max_tokens": 4096
-      }
-    },
-    "Flash-No-Research": {
-      "provider": "gemini",
-      "model_id": "gemini-2.5-flash",
-      "type": "chat",
-      "system_prompt_file": "prompts/default_prompt.txt",
-      "parameters": {
-        "generation_config": {
-          "max_output_tokens": 4096
-        }
-      }
-    },
-    "Flash-Research": {
-      "provider": "gemini",
-      "model_id": "gemini-2.5-flash",
-      "type": "chat",
-      "system_prompt_file": "prompts/default_prompt.txt",
-      "parameters": {
-        "enable_google_search": true,
-        "generation_config": {
-          "max_output_tokens": 4096
-        }
-      }
-    },
     "Flash-Perplexity": {
       "provider": "gemini_perplexity",
-      "model_id": "gemini-2.5-flash",
-      "type": "chat",
-      "system_prompt_file": "prompts/default_prompt.txt",
-      "parameters": {
-        "enable_perplexity_search": true,
-        "generation_config": {
-          "max_output_tokens": 4096
-        }
-      }
-    },
-    "Gemini-Pro": {
-      "provider": "gemini",
       "model_id": "gemini-2.5-pro",
       "type": "chat",
-      "system_prompt_file": "prompts/default_prompt.txt",      
-      "parameters": {
-        "enable_google_search": true,
-        "generation_config": {
-          "max_output_tokens": 8192,
-          "top_p": 0.95
-        }
-      }
-    },
-    "Gemini-Pro-Perplexity": {
-      "provider": "gemini_perplexity",
-      "model_id": "gemini-2.5-pro",
-      "type": "chat",
-      "system_prompt_file": "prompts/default_prompt.txt",      
       "parameters": {
         "enable_perplexity_search": true,
-        "generation_config": {
-          "max_output_tokens": 8192,
-          "top_p": 0.95
-        }
-      }
-    },
-    "Perplexity-Research": {
-      "provider": "perplexity",
-      "model_id": "sonar-pro",
-      "type": "chat",
-      "system_prompt_file": "prompts/research_prompt.txt",
-      "parameters": {
-        "max_tokens": 4096,
-        "return_citations": true,
-        "search_recency_filter": "month",
-        "search_domain_filter": ["*"],
-        "web_search_options": {
-          "search_context_size": "medium"
-        }
-      }
-    },
-    "default": {
-      "provider": "gemini",
-      "model_id": "gemini-2.5-flash",
-      "type": "chat",
-      "system_prompt_file": "prompts/default_prompt.txt",
-      "parameters": {
+        "perplexity_config": {
+          "model": "sonar-pro",
+          "endpoint": "https://api.perplexity.ai/chat/completions",
+          "max_tokens": 2000,
+          "temperature": 0.1,
+          "function_name": "search_web",
+          "function_description": "Search the web for current information, recent events, news, facts, or data that may not be in my training data. Use this when users ask about recent events, current data, or when you need to verify information."
+        },
         "generation_config": {
           "max_output_tokens": 4096
         }

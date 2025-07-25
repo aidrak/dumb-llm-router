@@ -1,5 +1,6 @@
 import httpx
-from typing import Dict, Any, List, Optional
+import json
+from typing import Dict, Any, List, Optional, AsyncGenerator
 from clients.base import BaseLLMClient
 from config.settings import settings
 from utils.logger import setup_logger
@@ -22,6 +23,10 @@ class PerplexityClient(BaseLLMClient):
         except Exception as e:
             logger.error(f"❌ Failed to initialize Perplexity client: {e}")
             return False
+    
+    def supports_streaming(self) -> bool:
+        """Perplexity supports streaming"""
+        return True
     
     async def generate_response(self, 
                               model_id: str, 
@@ -124,6 +129,159 @@ class PerplexityClient(BaseLLMClient):
             logger.error(f"❌ Error calling Perplexity {model_id}: {e}")
             logger.error(f"❌ Request payload was: {payload}")
             raise
+    
+    async def generate_streaming_response(self, 
+                                        model_id: str, 
+                                        messages: List[Dict[str, Any]], 
+                                        temperature: float,
+                                        api_parameters: Dict[str, Any],
+                                        system_prompt: Optional[str] = None) -> AsyncGenerator[Dict[str, Any], None]:
+        
+        # Build messages for Perplexity API
+        llm_messages = []
+        if system_prompt:
+            llm_messages.append({"role": "system", "content": system_prompt})
+        
+        for msg in messages:
+            # Perplexity API expects text content only
+            if isinstance(msg["content"], list):
+                # Extract text from multimodal content
+                text_parts = []
+                for part in msg["content"]:
+                    if part.get("type") == "text":
+                        text_parts.append(part["text"])
+                content = " ".join(text_parts)
+            else:
+                content = msg["content"]
+            
+            llm_messages.append({
+                "role": msg["role"],
+                "content": content
+            })
+        
+        # Prepare streaming request payload
+        payload = {
+            "model": model_id,
+            "messages": llm_messages,
+            "stream": True  # Enable streaming
+        }
+        
+        # Add temperature if not excluded
+        if not api_parameters.get("exclude_temperature", False):
+            payload["temperature"] = temperature
+        
+        # Add supported parameters
+        if "max_tokens" in api_parameters:
+            payload["max_tokens"] = api_parameters["max_tokens"]
+        
+        if "top_p" in api_parameters:
+            payload["top_p"] = api_parameters["top_p"]
+            
+        if "presence_penalty" in api_parameters:
+            payload["presence_penalty"] = api_parameters["presence_penalty"]
+        
+        # Search-related parameters
+        if "search_domain_filter" in api_parameters:
+            payload["search_domain_filter"] = api_parameters["search_domain_filter"]
+        
+        if "search_recency_filter" in api_parameters:
+            payload["search_recency_filter"] = api_parameters["search_recency_filter"]
+        
+        headers = {
+            "Authorization": f"Bearer {settings.perplexity_api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream"
+        }
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                logger.debug(f"🔍 Perplexity Streaming API Request:")
+                logger.debug(f"   URL: {self.base_url}/chat/completions")
+                logger.debug(f"   Model: {model_id}")
+                logger.debug(f"   Messages: {len(llm_messages)}")
+                
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                    timeout=60.0
+                ) as response:
+                    
+                    if response.status_code != 200:
+                        logger.error(f"❌ Perplexity Streaming Error: {response.status_code}")
+                        yield {
+                            "id": f"chatcmpl-{model_id}",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": model_id,
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"content": f"Error: HTTP {response.status_code}"},
+                                "finish_reason": "stop"
+                            }]
+                        }
+                        return
+                    
+                    logger.info(f"✅ Started streaming response from Perplexity {model_id}")
+                    
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:]  # Remove "data: " prefix
+                            
+                            if data_str.strip() == "[DONE]":
+                                break
+                            
+                            try:
+                                chunk_data = json.loads(data_str)
+                                
+                                # Convert Perplexity chunk to OpenAI format
+                                if "choices" in chunk_data and chunk_data["choices"]:
+                                    choice = chunk_data["choices"][0]
+                                    delta = choice.get("delta", {})
+                                    
+                                    yield {
+                                        "id": chunk_data.get("id", f"chatcmpl-{model_id}"),
+                                        "object": "chat.completion.chunk",
+                                        "created": chunk_data.get("created", 0),
+                                        "model": model_id,
+                                        "choices": [{
+                                            "index": 0,
+                                            "delta": delta,
+                                            "finish_reason": choice.get("finish_reason")
+                                        }]
+                                    }
+                                    
+                            except json.JSONDecodeError as e:
+                                logger.warning(f"Failed to parse streaming chunk: {e}")
+                                continue
+                    
+                    # Send final chunk if not already sent
+                    yield {
+                        "id": f"chatcmpl-{model_id}",
+                        "object": "chat.completion.chunk",
+                        "created": 0,
+                        "model": model_id,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": "stop"
+                        }]
+                    }
+                    
+        except Exception as e:
+            logger.error(f"❌ Error streaming from Perplexity {model_id}: {e}")
+            yield {
+                "id": f"chatcmpl-{model_id}",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": f"Streaming error: {str(e)}"},
+                    "finish_reason": "stop"
+                }]
+            }
     
     def _convert_perplexity_response(self, perplexity_response: Dict[str, Any], model_id: str) -> Dict[str, Any]:
         """Convert Perplexity response format to OpenAI-compatible format"""

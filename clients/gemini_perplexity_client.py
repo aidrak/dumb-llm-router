@@ -8,7 +8,7 @@ except ImportError:
 
 import httpx
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncGenerator  # ADD AsyncGenerator HERE
 from clients.base import BaseLLMClient
 from config.settings import settings
 from utils.logger import setup_logger
@@ -27,6 +27,7 @@ class GeminiWithPerplexityClient(BaseLLMClient):
         
         if not settings.perplexity_api_key:
             logger.warning("PERPLEXITY_API_KEY not set. Search function will not be available.")
+            # Don't return False here - continue without search functionality
         
         try:
             self.client = genai.Client(api_key=settings.gemini_api_key)
@@ -35,6 +36,10 @@ class GeminiWithPerplexityClient(BaseLLMClient):
         except Exception as e:
             logger.error(f"❌ Failed to initialize Gemini client: {e}")
             return False
+    
+    def supports_streaming(self) -> bool:
+        """Gemini with Perplexity supports streaming"""
+        return True
     
     async def _call_perplexity_search(self, query: str, perplexity_config: Dict[str, Any]) -> str:
         """Call Perplexity API with configurable parameters"""
@@ -50,10 +55,12 @@ class GeminiWithPerplexityClient(BaseLLMClient):
         payload = {
             "model": model,
             "messages": [
+                {"role": "system", "content": "You are a helpful research assistant. Provide comprehensive and accurate information, citing your sources."},
                 {"role": "user", "content": query}
             ],
             "max_tokens": max_tokens,
-            "temperature": temperature
+            "temperature": temperature,
+            "search_focus": "academic"
         }
         
         # Add optional search parameters
@@ -92,6 +99,14 @@ class GeminiWithPerplexityClient(BaseLLMClient):
                 # Handle both response formats
                 if "choices" in data and data["choices"]:
                     search_result = data["choices"][0]["message"]["content"]
+                    
+                    # Add sources if available
+                    if "references" in data and data["references"]:
+                        sources = "\n\n**Sources:**\n"
+                        for ref in data["references"]:
+                            sources += f"- {ref['url']}\n"
+                        search_result += sources
+                        
                 elif "output" in data and data["output"]:
                     # Handle Perplexity's custom format
                     output = data["output"]
@@ -368,3 +383,216 @@ class GeminiWithPerplexityClient(BaseLLMClient):
         except Exception as e:
             logger.error(f"❌ Error calling Gemini {model_id}: {e}")
             raise
+    
+    async def generate_streaming_response(self, model_id: str, messages: List[Dict[str, Any]], 
+                                    temperature: float, api_parameters: Dict[str, Any],
+                                    system_prompt: Optional[str] = None) -> AsyncGenerator[Dict[str, Any], None]:
+    
+        # Build generation config
+        generation_config = {}
+        if not api_parameters.get("exclude_temperature", False):
+            generation_config["temperature"] = temperature
+        
+        generation_config_params = api_parameters.get("generation_config", {})
+        generation_config.update(generation_config_params)
+        
+        # Build generate_content parameters
+        generate_params = {}
+        if generation_config:
+            generate_params["config"] = types.GenerateContentConfig(
+                temperature=generation_config.get("temperature"),
+                max_output_tokens=generation_config.get("max_output_tokens")
+            )
+        
+        # Add search function if enabled
+        enable_perplexity_search = api_parameters.get("enable_perplexity_search", False)
+        perplexity_config = api_parameters.get("perplexity_config", {})
+        
+        if enable_perplexity_search and settings.perplexity_api_key and perplexity_config:
+            search_tool = types.Tool(
+                function_declarations=[self._create_search_function_declaration(perplexity_config)]
+            )
+            if "config" not in generate_params:
+                generate_params["config"] = types.GenerateContentConfig()
+            generate_params["config"].tools = [search_tool]
+            
+            perplexity_model = perplexity_config.get("model", "sonar-pro")
+            logger.debug(f"✓ Enabled Perplexity search for streaming using {perplexity_model}")
+
+        try:
+            gemini_contents = self._build_gemini_contents(messages, system_prompt)
+            
+            # SIMPLIFIED APPROACH: Handle function calls in non-streaming mode first
+            # This avoids the complexity of streaming with function calls
+            initial_response = self.client.models.generate_content(
+                model=model_id,
+                contents=gemini_contents,
+                **generate_params
+            )
+            
+            # Check if function calls were made
+            function_calls_made = False
+            final_content = ""
+            
+            if hasattr(initial_response, 'candidates') and initial_response.candidates:
+                candidate = initial_response.candidates[0]
+                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                    
+                    # Check for both function calls and text
+                    function_calls = []
+                    text_parts = []
+                    
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'function_call') and part.function_call is not None:
+                            function_calls.append(part.function_call)
+                            function_calls_made = True
+                        elif hasattr(part, 'text') and part.text is not None:
+                            text_parts.append(part.text)
+                    
+                    # If we have function calls, process them
+                    if function_calls_made and enable_perplexity_search:
+                        logger.info("🔍 Processing search request before streaming")
+                        
+                        # Process search requests
+                        function_responses = []
+                        for func_call in function_calls:
+                            if func_call is None:
+                                continue
+                                
+                            function_name = perplexity_config.get("function_name", "search_web")
+                            if hasattr(func_call, 'name') and func_call.name == function_name:
+                                if hasattr(func_call, 'args'):
+                                    args = func_call.args
+                                    query = args.get("query", "") if args else ""
+                                    
+                                    if query:
+                                        logger.info(f"🔍 Gemini requested search: {query}")
+                                        search_result = await self._call_perplexity_search(query, perplexity_config)
+                                        
+                                        function_responses.append(
+                                            types.Part(
+                                                function_response=types.FunctionResponse(
+                                                    name=function_name,
+                                                    response={"result": search_result}
+                                                )
+                                            )
+                                        )
+                        
+                        # Generate final response with search results
+                        if function_responses:
+                            updated_contents = gemini_contents + [function_responses]
+                            
+                            # Now stream the final response
+                            stream = self.client.models.generate_content_stream(
+                                model=model_id,
+                                contents=updated_contents,
+                                **generate_params
+                            )
+                            
+                            logger.info(f"✅ Started streaming enhanced response with search results")
+                            
+                            for chunk in stream:
+                                if hasattr(chunk, 'text') and chunk.text:
+                                    yield {
+                                        "id": f"chatcmpl-{model_id}",
+                                        "object": "chat.completion.chunk",
+                                        "created": 0,
+                                        "model": model_id,
+                                        "choices": [{
+                                            "index": 0,
+                                            "delta": {"content": chunk.text},
+                                            "finish_reason": None
+                                        }]
+                                    }
+                            
+                            # Send final chunk
+                            yield {
+                                "id": f"chatcmpl-{model_id}",
+                                "object": "chat.completion.chunk",
+                                "created": 0,
+                                "model": model_id,
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {},
+                                    "finish_reason": "stop"
+                                }]
+                            }
+                            return
+                    
+                    # If no function calls or they failed, use any existing text
+                    if text_parts:
+                        final_content = " ".join(text_parts)
+            
+            # If we have final content from the initial response, stream it
+            if final_content:
+                # Simulate streaming by chunking the response
+                chunk_size = 50
+                for i in range(0, len(final_content), chunk_size):
+                    chunk_content = final_content[i:i + chunk_size]
+                    
+                    yield {
+                        "id": f"chatcmpl-{model_id}",
+                        "object": "chat.completion.chunk",
+                        "created": 0,
+                        "model": model_id,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk_content},
+                            "finish_reason": None
+                        }]
+                    }
+                    
+                    # Small delay for natural streaming feel
+                    import asyncio
+                    await asyncio.sleep(0.05)
+            else:
+                # Fallback: regular streaming without function calls
+                logger.info(f"✅ Started streaming response from Gemini {model_id}")
+                
+                stream = self.client.models.generate_content_stream(
+                    model=model_id,
+                    contents=gemini_contents,
+                    **generate_params
+                )
+                
+                for chunk in stream:
+                    if hasattr(chunk, 'text') and chunk.text:
+                        yield {
+                            "id": f"chatcmpl-{model_id}",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": model_id,
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"content": chunk.text},
+                                "finish_reason": None
+                            }]
+                        }
+            
+            # Send final chunk
+            yield {
+                "id": f"chatcmpl-{model_id}",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop"
+                }]
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error streaming from Gemini {model_id}: {e}")
+            # Yield error chunk
+            yield {
+                "id": f"chatcmpl-{model_id}",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": f"Error: {str(e)}"},
+                    "finish_reason": "stop"
+                }]
+            }

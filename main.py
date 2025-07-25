@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Request, Header
+from fastapi.responses import StreamingResponse, JSONResponse
 import time
+import json
 
 # Import our modular components
 from config.models import ChatRequest
@@ -66,7 +68,7 @@ async def list_models_alt(authorization: str = Header(None)):
 
 @app.post("/v1/chat/completions")
 async def smart_route_chat_completions(request: Request, authorization: str = Header(None)):
-    """Main chat completions endpoint with smart routing"""
+    """Main chat completions endpoint with smart routing and streaming support"""
     try:
         # Hot-reload settings and update log level
         settings.reload_if_changed()
@@ -97,20 +99,93 @@ async def smart_route_chat_completions(request: Request, authorization: str = He
         auth_header = request.headers.get("Authorization", "")
         logger.debug(f"🔑 AUTH HEADER LENGTH: {len(auth_header) if auth_header else 0}")
         
-        # Route and process the request
-        response = await router.route_and_process(chat_request, auth_header)
+        # Check if streaming is requested
+        stream = chat_request.stream or req_data.get("stream", False)
         
-        return response
+        if stream:
+            logger.info("🌊 Handling streaming request")
+            
+            # Handle streaming request
+            async def streaming_generator():
+                try:
+                    async for chunk in router.route_and_process_streaming(chat_request, auth_header):
+                        yield chunk
+                except Exception as e:
+                    logger.error(f"❌ Error in streaming generator: {e}")
+                    # Send error chunk
+                    error_chunk = {
+                        "id": "error",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": "dumb-llm-router",
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": f"Error: {str(e)}"},
+                            "finish_reason": "stop"
+                        }]
+                    }
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+            
+            return StreamingResponse(
+                streaming_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Methods": "*"
+                }
+            )
+        else:
+            logger.info("📄 Handling non-streaming request")
+            
+            # Route and process the request (non-streaming)
+            response = await router.route_and_process(chat_request, auth_header)
+            
+            return JSONResponse(content=response)
         
     except Exception as e:
         logger.error(f"Critical error in smart routing service: {e}", exc_info=True)
-        return {
-            "error": {
-                "message": f"A critical error occurred in the smart router: {str(e)}",
-                "type": "server_error",
-                "code": "smart_router_fail"
-            }
-        }
+        
+        # Check if this was a streaming request for proper error response
+        req_data = await request.json() if hasattr(request, '_body') else {}
+        is_streaming = req_data.get("stream", False)
+        
+        if is_streaming:
+            # Return streaming error
+            async def error_stream():
+                error_chunk = {
+                    "id": "error",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": "dumb-llm-router",
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"content": f"Critical error: {str(e)}"},
+                        "finish_reason": "stop"
+                    }]
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+            
+            return StreamingResponse(
+                error_stream(),
+                media_type="text/event-stream"
+            )
+        else:
+            # Return regular error
+            return JSONResponse(
+                content={
+                    "error": {
+                        "message": f"A critical error occurred in the smart router: {str(e)}",
+                        "type": "server_error",
+                        "code": "smart_router_fail"
+                    }
+                },
+                status_code=500
+            )
 
 @app.get("/debug/conversations")
 async def debug_conversations(authorization: str = Header(None)):
