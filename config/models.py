@@ -1,11 +1,15 @@
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+
 
 class FileDataContent(BaseModel):
     content: Optional[str] = None
 
+
 class FileDataObject(BaseModel):
     data: Optional[FileDataContent] = None
+
 
 class FileReference(BaseModel):
     type: str
@@ -19,23 +23,29 @@ class FileReference(BaseModel):
     error: Optional[str] = None
     itemId: Optional[str] = None
 
+
 from typing import Union
+
 
 class TextContent(BaseModel):
     type: str = "text"
     text: str
 
+
 class ImageUrl(BaseModel):
     url: str
+
 
 class ImageContent(BaseModel):
     type: str = "image_url"
     image_url: ImageUrl
 
+
 class Message(BaseModel):
     role: str
     content: Union[str, List[Dict[str, Any]]]
     files: Optional[List[FileReference]] = None
+
 
 class ChatRequest(BaseModel):
     messages: List[Message]

@@ -133,6 +133,9 @@ redis-data/
 
 # Docker build context
 .dockerbuildcontext
+Dockerfile
+docker-compose.yml
+entrypoint.sh
 
 # Testing files (unless you run tests in container)
 testing/
@@ -149,3 +152,18 @@ htmlcov/
 .devcontainer/
 pyproject.toml
 requirements-dev.txt
+
+# Github Specific
+.github/
+.git/
+.gitignore
+
+# Documentation (want in Git, not in image)
+README.md
+CHANGELOG.md
+LICENSE
+docs/
+*.md
+
+# Unraid Instructions
+*.xml

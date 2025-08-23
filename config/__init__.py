@@ -3,7 +3,7 @@
 # config/__init__.py
 """Configuration module for Smart LLM Router"""
 
-# clients/__init__.py  
+# clients/__init__.py
 """LLM client implementations"""
 
 # services/__init__.py

@@ -21,9 +21,9 @@ services:
     env_file: .env
     
     volumes:
-      - ${APPDATA}/dumb-llm-router/config:/config:rw
+      - ${APPDATA}/dumb-llm-router-test/config:/config:rw
       # Add a writable temp directory if needed
-      - ${APPDATA}/dumb-llm-router/tmp:/app/tmp:rw
+      - ${APPDATA}/dumb-llm-router-test/tmp:/app/tmp:rw
     
     networks:
       - default
