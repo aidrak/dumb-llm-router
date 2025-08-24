@@ -2,7 +2,7 @@ fastapi
 uvicorn
 openai
 ollama
-google-genai>=1.0.0
+google-genai>=1.29.0
 anthropic
 python-dotenv
 httpx

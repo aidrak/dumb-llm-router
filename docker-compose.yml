@@ -27,6 +27,7 @@ services:
       - CONFIG_PATH=${CONFIG_PATH}
       - MODEL_CONFIG_FILE=${MODEL_CONFIG_FILE}
       - APPDATA=${APPDATA}
+      - USE_GEMINI_RAG=${USE_GEMINI_RAG}
 
     volumes:
       - ${APPDATA}/dumb-llm-router/config:/config:rw

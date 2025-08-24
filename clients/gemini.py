@@ -36,20 +36,20 @@ class GeminiClient(BaseLLMClient):
 
         try:
             self.client = genai.Client(api_key=settings.gemini_api_key)
-            
+
             # Initialize RAG components if enabled
             if settings.use_gemini_rag:
                 try:
                     self.files_api_manager = FilesAPIManager(self.client)
                     self.content_builder = GeminiContentBuilder(
-                        self.files_api_manager, 
+                        self.files_api_manager,
                         use_files_api=True
                     )
                     logger.info("✅ Gemini RAG components initialized")
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to initialize Gemini RAG: {e}. RAG will be disabled.")
                     settings.use_gemini_rag = False
-            
+
             logger.info("✅ Gemini Advanced client initialized successfully")
             return True
         except Exception as e:
@@ -252,7 +252,7 @@ class GeminiClient(BaseLLMClient):
         try:
             if not self.client:
                 raise Exception("Client not initialized")
-            
+
             # Process files with Gemini RAG if enabled
             file_parts = []
             if files and settings.use_gemini_rag:
@@ -261,7 +261,7 @@ class GeminiClient(BaseLLMClient):
                     logger.info(f"🔄 Using Gemini native RAG for {len(file_parts)} file parts")
                 else:
                     logger.info("🔄 Falling back to Open WebUI RAG (files will be handled externally)")
-            
+
             gemini_contents = self._build_gemini_contents(messages, system_prompt, file_parts)
             logger.debug(f"🔍 Converted {len(messages)} messages to Gemini contents")
 
@@ -335,7 +335,7 @@ class GeminiClient(BaseLLMClient):
         try:
             if not self.client:
                 raise Exception("Client not initialized")
-            
+
             # Process files with Gemini RAG if enabled
             file_parts = []
             if files and settings.use_gemini_rag:
@@ -344,7 +344,7 @@ class GeminiClient(BaseLLMClient):
                     logger.info(f"🔄 Using Gemini native RAG for {len(file_parts)} file parts in streaming")
                 else:
                     logger.info("🔄 Falling back to Open WebUI RAG for streaming")
-            
+
             gemini_contents = self._build_gemini_contents(messages, system_prompt, file_parts)
             logger.debug(f"🔍 Converted {len(messages)} messages to Gemini contents for streaming")
 

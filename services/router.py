@@ -97,7 +97,7 @@ class SmartRouter:
         logger.info(f"🚀 Processing request: '{user_prompt_text[:100]}...'")
         if system_prompt_override:
             logger.info("📝 Using custom system prompt from OpenWebUI")
-        
+
         # Check for files
         files = chat_request.files
         if files:
@@ -195,7 +195,7 @@ class SmartRouter:
         logger.info(f"🚀 Processing streaming request: '{user_prompt_text[:100]}...'")
         if system_prompt_override:
             logger.info("📝 Using custom system prompt from OpenWebUI")
-        
+
         # Check for files
         files = chat_request.files
         if files:

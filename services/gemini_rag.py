@@ -6,11 +6,9 @@ Based on the manifold implementation with simplified architecture
 import asyncio
 import base64
 import io
-import mimetypes
 import re
-import uuid
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import xxhash
@@ -37,7 +35,7 @@ class FilesAPIError(Exception):
 
 class UploadStatusManager:
     """Manages status updates for concurrent file uploads"""
-    
+
     def __init__(self, event_emitter=None):
         self.event_emitter = event_emitter
         self.queue = asyncio.Queue()
@@ -89,13 +87,13 @@ class UploadStatusManager:
 
 class FilesAPIManager:
     """Manages file uploads and caching with Google Files API"""
-    
+
     def __init__(self, client: genai.Client, event_emitter=None):
         if not genai or not types:
             raise ImportError("google-genai package required for FilesAPIManager")
         if not xxhash:
-            raise ImportError("xxhash package required for FilesAPIManager") 
-            
+            raise ImportError("xxhash package required for FilesAPIManager")
+
         self.client = client
         self.event_emitter = event_emitter
         self.file_cache = SimpleMemoryCache(serializer=NullSerializer())
@@ -110,7 +108,7 @@ class FilesAPIManager:
         status_queue: Optional[asyncio.Queue] = None,
     ) -> types.File:
         """Get or upload file using content-addressable caching"""
-        
+
         # Get content hash
         content_hash = await self._get_content_hash(file_bytes, owui_file_id)
 
@@ -139,7 +137,7 @@ class FilesAPIManager:
                     ttl_seconds = self._calculate_ttl(active_file.expiration_time)
                     await self.file_cache.set(content_hash, active_file, ttl=ttl_seconds)
                     return active_file
-                    
+
             except genai_errors.ClientError as e:
                 if e.code == 403:  # File not found
                     logger.info(f"File not found on server: {deterministic_name}")
@@ -161,21 +159,21 @@ class FilesAPIManager:
 
         # Compute hash
         content_hash = xxhash.xxh64(file_bytes).hexdigest()
-        
+
         if owui_file_id:
             await self.id_hash_cache.set(owui_file_id, content_hash)
-            
+
         return content_hash
 
     def _calculate_ttl(self, expiration_time: Optional[datetime]) -> Optional[float]:
         """Calculate TTL in seconds"""
         if not expiration_time:
             return None
-            
+
         now_utc = datetime.now(timezone.utc)
         if expiration_time <= now_utc:
             return 0
-            
+
         return (expiration_time - now_utc).total_seconds()
 
     async def _upload_and_process_file(
@@ -187,12 +185,12 @@ class FilesAPIManager:
         status_queue: Optional[asyncio.Queue] = None,
     ) -> types.File:
         """Upload and process new file"""
-        
+
         if status_queue:
             await status_queue.put(("REGISTER_UPLOAD",))
 
         logger.info(f"Uploading new file: {deterministic_name}")
-        
+
         try:
             file_io = io.BytesIO(file_bytes)
             upload_config = types.UploadFileConfig(
@@ -201,7 +199,7 @@ class FilesAPIManager:
             uploaded_file = await self.client.aio.files.upload(
                 file=file_io, config=upload_config
             )
-            
+
             if not uploaded_file.name:
                 raise FilesAPIError("File upload did not return a file name")
 
@@ -214,10 +212,10 @@ class FilesAPIManager:
             # Cache the file
             ttl_seconds = self._calculate_ttl(active_file.expiration_time)
             await self.file_cache.set(content_hash, active_file, ttl=ttl_seconds)
-            
+
             logger.info(f"File upload completed: {active_file.name}")
             return active_file
-            
+
         except Exception as e:
             logger.error(f"File upload failed: {e}")
             raise FilesAPIError(f"Upload failed: {e}")
@@ -233,32 +231,32 @@ class FilesAPIManager:
     ) -> types.File:
         """Poll file until it becomes ACTIVE"""
         end_time = asyncio.get_event_loop().time() + timeout
-        
+
         while asyncio.get_event_loop().time() < end_time:
             try:
                 file = await self.client.aio.files.get(name=file_name)
-                
+
                 if file.state == types.FileState.ACTIVE:
                     return file
-                    
+
                 if file.state == types.FileState.FAILED:
                     error_msg = f"File processing failed: {file_name}"
                     if file.error:
                         error_msg += f" - {file.error.message}"
                     raise FilesAPIError(error_msg)
-                    
+
                 logger.debug(f"File {file_name} still processing...")
                 await asyncio.sleep(poll_interval)
-                
+
             except Exception as e:
                 raise FilesAPIError(f"Polling failed for {file_name}: {e}")
-                
+
         raise FilesAPIError(f"File {file_name} did not become active within {timeout}s")
 
 
 class GeminiContentBuilder:
     """Builds Gemini content from messages and files"""
-    
+
     def __init__(self, files_api_manager: FilesAPIManager, use_files_api: bool = True):
         self.files_api_manager = files_api_manager
         self.use_files_api = use_files_api
@@ -314,7 +312,7 @@ class GeminiContentBuilder:
         try:
             file_type = file_ref.get("type", "")
             file_id = file_ref.get("id")
-            
+
             if file_type == "file" and file_id:
                 # Handle regular file
                 return await self._process_regular_file(file_id, status_queue)
@@ -324,7 +322,7 @@ class GeminiContentBuilder:
             else:
                 logger.warning(f"Unsupported file type: {file_type}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error processing file reference: {e}")
             return None
@@ -367,17 +365,17 @@ class GeminiContentBuilder:
         """Process image file"""
         try:
             image_url = file_ref.get("url", "")
-            
+
             if image_url.startswith("data:image"):
                 # Handle data URI
                 match = re.match(r"data:(image/\w+);base64,(.+)", image_url)
                 if not match:
                     logger.error("Invalid data URI for image")
                     return None
-                    
+
                 mime_type, base64_data = match.group(1), match.group(2)
                 file_bytes = base64.b64decode(base64_data)
-                
+
                 if self.use_files_api:
                     # Use Files API
                     gemini_file = await self.files_api_manager.get_or_upload_file(
@@ -397,7 +395,7 @@ class GeminiContentBuilder:
             else:
                 logger.warning(f"Unsupported image URL format: {image_url[:50]}...")
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error processing image file: {e}")
             return None
@@ -408,12 +406,12 @@ class GeminiContentBuilder:
             # This would normally integrate with Open WebUI's file system
             # For now, we'll implement a basic version that attempts to fetch from a common path
             # In production, this should use Open WebUI's Files API
-            
+
             # Placeholder implementation - return None to trigger fallback to Open WebUI RAG
             logger.info(f"File data retrieval not fully implemented for file_id: {file_id}")
             logger.info("Falling back to Open WebUI RAG for file processing")
             return None, None
-            
+
         except Exception as e:
             logger.error(f"Error retrieving file data for {file_id}: {e}")
             return None, None

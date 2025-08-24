@@ -9,7 +9,7 @@ class Settings:
     # Default configuration values
     DEFAULTS = {
         "working_model": "working_model",
-        "searching_model": "searching_model", 
+        "searching_model": "searching_model",
         "fallback_model": "working_model",
         "search_keywords": [],
         "character_length_threshold": 1500,
@@ -22,14 +22,14 @@ class Settings:
         # API Keys (from environment) - Ensure virtual environment is used
         if not os.getenv("VIRTUAL_ENV"):
             print("⚠️  Warning: Virtual environment not detected. Please use a virtual environment for security.")
-        
+
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         self.perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
         self.ollama_host = os.getenv("OLLAMA_API_HOST")
         self.openwebui_url = os.getenv("OPENWEBUI_URL")
-        
+
         # RAG Configuration
         self.use_gemini_rag = os.getenv("USE_GEMINI_RAG", "false").lower() == "true"
 
@@ -53,7 +53,7 @@ class Settings:
         """Apply default configuration values"""
         for key, value in self.DEFAULTS.items():
             setattr(self, key, value)
-        
+
         # Backward compatibility
         self.primary_model = self.working_model
 
@@ -110,7 +110,7 @@ class Settings:
             "character_length_threshold", self.DEFAULTS["character_length_threshold"]
         )
         self.token_usage_threshold = context_detection.get(
-            "token_usage_threshold", self.DEFAULTS["token_usage_threshold"] 
+            "token_usage_threshold", self.DEFAULTS["token_usage_threshold"]
         )
 
         # Logging
