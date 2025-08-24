@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -24,7 +24,7 @@ class FileReference(BaseModel):
     itemId: Optional[str] = None
 
 
-from typing import Union
+
 
 
 class TextContent(BaseModel):

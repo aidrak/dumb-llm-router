@@ -7,6 +7,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from fastapi import HTTPException
 
 from clients.base import get_llm_client_and_model_details
+from clients.gemini import GeminiClient
 from config.models import ChatRequest, Message
 from config.settings import settings
 from utils.logger import setup_logger
@@ -30,13 +31,17 @@ class SmartRouter:
 
 
     def _should_use_searching_model(self, messages: List[Message]) -> bool:
-        """Check if the user message contains keywords that trigger searching model routing"""
-        keywords = settings.search_keywords or ["research", "look up", "lookup", "look-up", "search", "verify", "`"]
-        
-        # Check the last user message for keywords
+        keywords = settings.search_keywords or [
+            "research", "look up", "lookup", "look-up", "search", "verify", "`"
+        ]
+
+        # Only check actual user messages, not system prompts
         for message in reversed(messages):
-            if message.role == "user":
+            if message.role == "user":  # This already exists
                 content_text = self._get_text_from_content(message.content).lower()
+                # Add this check to ignore Open WebUI system tasks
+                if content_text.startswith("### task:"):
+                    continue
                 for keyword in keywords:
                     if keyword in content_text:
                         logger.info(f"🔍 Keyword '{keyword}' detected - routing to searching_model")
@@ -47,7 +52,10 @@ class SmartRouter:
     def _extract_system_prompt_from_messages(
         self, messages: List[Message]
     ) -> tuple[List[Message], Optional[str]]:
-        """Extract system prompt from messages if present, return cleaned messages and system prompt"""
+        """
+        Extract system prompt from messages if present,
+        return cleaned messages and system prompt
+        """
         system_prompt_override: Optional[str] = None
         cleaned_messages = []
 
@@ -89,6 +97,11 @@ class SmartRouter:
         logger.info(f"🚀 Processing request: '{user_prompt_text[:100]}...'")
         if system_prompt_override:
             logger.info("📝 Using custom system prompt from OpenWebUI")
+        
+        # Check for files
+        files = chat_request.files
+        if files:
+            logger.info(f"📄 Found {len(files)} file(s) in request")
 
         # Simple routing: search keywords = searching_model, otherwise = working_model
         if self._should_use_searching_model(cleaned_messages):
@@ -133,13 +146,21 @@ class SmartRouter:
             temperature = chat_request.temperature if chat_request.temperature is not None else 0.7
             message_dicts = [msg.dict() for msg in cleaned_messages]
 
-            response = await client.generate_response(
-                model_id=model_id,
-                messages=message_dicts,
-                temperature=temperature,
-                api_parameters=api_params or {},
-                system_prompt=final_system_prompt,  # Use only OpenWebUI prompt, could be None
-            )
+            # Prepare client call parameters
+            call_params = {
+                "model_id": model_id,
+                "messages": message_dicts,
+                "temperature": temperature,
+                "api_parameters": api_params or {},
+                "system_prompt": final_system_prompt,
+            }
+
+            # Pass files to Gemini client if RAG is enabled
+            if settings.use_gemini_rag and isinstance(client, GeminiClient) and files:
+                logger.info(f"🔄 Passing {len(files)} files to Gemini for native RAG processing")
+                call_params["files"] = [file.dict() for file in files]
+
+            response = await client.generate_response(**call_params)
 
             logger.info("✅ Response generated successfully")
             return self._format_openai_response(response, target_model)
@@ -174,6 +195,11 @@ class SmartRouter:
         logger.info(f"🚀 Processing streaming request: '{user_prompt_text[:100]}...'")
         if system_prompt_override:
             logger.info("📝 Using custom system prompt from OpenWebUI")
+        
+        # Check for files
+        files = chat_request.files
+        if files:
+            logger.info(f"📄 Found {len(files)} file(s) in streaming request")
 
         # Simple routing: search keywords = searching_model, otherwise = working_model
         if self._should_use_searching_model(cleaned_messages):
@@ -224,13 +250,21 @@ class SmartRouter:
             if hasattr(client, "supports_streaming") and client.supports_streaming():
                 logger.info(f"✅ Using native streaming for {target_model}")
 
-                async for chunk in client.generate_streaming_response(
-                    model_id=model_id,
-                    messages=message_dicts,
-                    temperature=temperature,
-                    api_parameters=api_params or {},
-                    system_prompt=final_system_prompt,
-                ):
+                # Prepare streaming call parameters
+                streaming_params = {
+                    "model_id": model_id,
+                    "messages": message_dicts,
+                    "temperature": temperature,
+                    "api_parameters": api_params or {},
+                    "system_prompt": final_system_prompt,
+                }
+
+                # Pass files to Gemini client if RAG is enabled
+                if settings.use_gemini_rag and isinstance(client, GeminiClient) and files:
+                    logger.info(f"🔄 Passing {len(files)} files to Gemini for native RAG streaming")
+                    streaming_params["files"] = [file.dict() for file in files]
+
+                async for chunk in client.generate_streaming_response(**streaming_params):
                     # Format the chunk for OpenAI compatibility
                     formatted_chunk = self._format_streaming_chunk(chunk, target_model)
                     yield f"data: {json.dumps(formatted_chunk)}\n\n"

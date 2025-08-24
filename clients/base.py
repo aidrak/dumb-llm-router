@@ -36,7 +36,10 @@ class BaseLLMClient(ABC):
         api_parameters: Dict[str, Any],
         system_prompt: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Generate a streaming response using the LLM. Override in subclasses that support streaming."""
+        """
+        Generate a streaming response using the LLM.
+        Override in subclasses that support streaming.
+        """
         # Default implementation: fall back to non-streaming
         response = await self.generate_response(
             model_id, messages, temperature, api_parameters, system_prompt
@@ -112,13 +115,16 @@ def get_llm_client_and_model_details(
     client: Optional[BaseLLMClient] = None
     # Map model names directly to clients (no provider field needed)
     if logical_model_name == "working_model":
-        from clients.gemini_advanced_client import GeminiAdvancedClient
-        client = GeminiAdvancedClient()
+        from clients.gemini import GeminiClient
+        client = GeminiClient()
     elif logical_model_name == "searching_model":
-        from clients.perplexity_client import PerplexityClient
+        from clients.perplexity import PerplexityClient
         client = PerplexityClient()
     else:
-        print(f"Error: Unknown model '{logical_model_name}'. Expected 'working_model' or 'searching_model'.")
+        print(
+            f"Error: Unknown model '{logical_model_name}'. "
+            f"Expected 'working_model' or 'searching_model'."
+        )
         return None, None, None, None, None
 
     if not client.initialize_client():

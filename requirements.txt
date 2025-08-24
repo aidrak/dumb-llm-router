@@ -9,3 +9,5 @@ httpx
 pydantic
 pyyaml
 tiktoken
+xxhash
+aiocache

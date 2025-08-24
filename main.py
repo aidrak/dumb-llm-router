@@ -169,21 +169,24 @@ async def smart_route_chat_completions(request: Request, authorization: str = He
         if is_streaming:
             # Return streaming error
             async def error_stream():
-                error_chunk = {
-                    "id": "error",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": "dumb-llm-router",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": f"Critical error: {str(e)}"},
-                            "finish_reason": "stop",
-                        }
-                    ],
-                }
-                yield f"data: {json.dumps(error_chunk)}\n\n"
-                yield "data: [DONE]\n\n"
+                try:
+                    raise
+                except Exception as e:
+                    error_chunk = {
+                        "id": "error",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": "dumb-llm-router",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": f"Critical error: {str(e)}"},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                    }
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
 
             return StreamingResponse(error_stream(), media_type="text/event-stream")
         else:
