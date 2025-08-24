@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Any, AsyncGenerator, Dict, List
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import HTTPException
 
@@ -28,11 +28,27 @@ class SmartRouter:
                         return True
         return False
 
+
+    def _should_use_searching_model(self, messages: List[Message]) -> bool:
+        """Check if the user message contains keywords that trigger searching model routing"""
+        keywords = settings.search_keywords or ["research", "look up", "lookup", "look-up", "search", "verify", "`"]
+        
+        # Check the last user message for keywords
+        for message in reversed(messages):
+            if message.role == "user":
+                content_text = self._get_text_from_content(message.content).lower()
+                for keyword in keywords:
+                    if keyword in content_text:
+                        logger.info(f"🔍 Keyword '{keyword}' detected - routing to searching_model")
+                        return True
+                break
+        return False
+
     def _extract_system_prompt_from_messages(
         self, messages: List[Message]
-    ) -> tuple[List[Message], str]:
+    ) -> tuple[List[Message], Optional[str]]:
         """Extract system prompt from messages if present, return cleaned messages and system prompt"""
-        system_prompt_override = None
+        system_prompt_override: Optional[str] = None
         cleaned_messages = []
 
         for message in messages:
@@ -48,6 +64,8 @@ class SmartRouter:
                 cleaned_messages.append(message)
 
         return cleaned_messages, system_prompt_override
+
+
 
     async def route_and_process(
         self, chat_request: ChatRequest, auth_header: str
@@ -72,9 +90,12 @@ class SmartRouter:
         if system_prompt_override:
             logger.info("📝 Using custom system prompt from OpenWebUI")
 
-        # Simple routing logic: always use primary model
-        # Gemini with Perplexity will handle search decisions automatically
-        target_model = settings.primary_model
+        # Simple routing: search keywords = searching_model, otherwise = working_model
+        if self._should_use_searching_model(cleaned_messages):
+            logger.info("🔍 Routing to searching_model for research query")
+            target_model = "searching_model"
+        else:
+            target_model = "working_model"
 
         # Ensure we have vision capability if needed
         has_vision = self._has_vision_content(cleaned_messages)
@@ -91,11 +112,11 @@ class SmartRouter:
         if not client or not model_id:
             logger.warning(f"⚠️ Target model '{target_model}' not available, trying fallback.")
             client, model_id, model_type, api_params, default_system_prompt = (
-                get_llm_client_and_model_details(settings.fallback_model)
+                get_llm_client_and_model_details("working_model")
             )
             if not client or not model_id:
                 raise HTTPException(status_code=500, detail="No valid LLM client available")
-            target_model = settings.fallback_model
+            target_model = "working_model"
 
         provider_name = getattr(client, "provider_name", "unknown")
         logger.info(f"🔧 Using: {target_model} ({provider_name}: {model_id})")
@@ -116,7 +137,7 @@ class SmartRouter:
                 model_id=model_id,
                 messages=message_dicts,
                 temperature=temperature,
-                api_parameters=api_params,
+                api_parameters=api_params or {},
                 system_prompt=final_system_prompt,  # Use only OpenWebUI prompt, could be None
             )
 
@@ -154,8 +175,12 @@ class SmartRouter:
         if system_prompt_override:
             logger.info("📝 Using custom system prompt from OpenWebUI")
 
-        # Simple routing logic: always use primary model
-        target_model = settings.primary_model
+        # Simple routing: search keywords = searching_model, otherwise = working_model
+        if self._should_use_searching_model(cleaned_messages):
+            logger.info("🔍 Routing to searching_model for research query")
+            target_model = "searching_model"
+        else:
+            target_model = "working_model"
 
         # Ensure we have vision capability if needed
         has_vision = self._has_vision_content(cleaned_messages)
@@ -172,13 +197,13 @@ class SmartRouter:
         if not client or not model_id:
             logger.warning(f"⚠️ Target model '{target_model}' not available, trying fallback.")
             client, model_id, model_type, api_params, default_system_prompt = (
-                get_llm_client_and_model_details(settings.fallback_model)
+                get_llm_client_and_model_details("working_model")
             )
             if not client or not model_id:
                 yield f"data: {json.dumps({'error': 'No valid LLM client available'})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
-            target_model = settings.fallback_model
+            target_model = "working_model"
 
         provider_name = getattr(client, "provider_name", "unknown")
         logger.info(f"🔧 Using for streaming: {target_model} ({provider_name}: {model_id})")
@@ -203,7 +228,7 @@ class SmartRouter:
                     model_id=model_id,
                     messages=message_dicts,
                     temperature=temperature,
-                    api_parameters=api_params,
+                    api_parameters=api_params or {},
                     system_prompt=final_system_prompt,
                 ):
                     # Format the chunk for OpenAI compatibility
@@ -222,7 +247,7 @@ class SmartRouter:
                     model_id=model_id,
                     messages=message_dicts,
                     temperature=temperature,
-                    api_parameters=api_params,
+                    api_parameters=api_params or {},
                     system_prompt=final_system_prompt,
                 )
 
@@ -337,13 +362,13 @@ class SmartRouter:
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         # Extract content from response
-        if hasattr(llm_response, "choices") and llm_response.choices:
-            content = llm_response.choices[0].message.content
-            if hasattr(llm_response, "usage"):
+        if isinstance(llm_response, dict) and llm_response.get("choices"):
+            content = llm_response["choices"][0]["message"]["content"]
+            if llm_response.get("usage"):
                 usage = {
-                    "prompt_tokens": getattr(llm_response.usage, "prompt_tokens", 0),
-                    "completion_tokens": getattr(llm_response.usage, "completion_tokens", 0),
-                    "total_tokens": getattr(llm_response.usage, "total_tokens", 0),
+                    "prompt_tokens": llm_response["usage"].get("prompt_tokens", 0),
+                    "completion_tokens": llm_response["usage"].get("completion_tokens", 0),
+                    "total_tokens": llm_response["usage"].get("total_tokens", 0),
                 }
         elif isinstance(llm_response, dict):
             if "choices" in llm_response:

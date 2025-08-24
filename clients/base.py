@@ -87,7 +87,6 @@ def get_llm_client_and_model_details(
         print(f"Error: Model '{logical_model_name}' not found in model configurations.")
         return None, None, None, None, None
 
-    provider = model_details.get("provider")
     model_id_for_api = model_details.get("model_id")
     model_type = model_details.get("type", "chat")
     api_parameters = model_details.get("parameters", {})
@@ -104,32 +103,27 @@ def get_llm_client_and_model_details(
     if not system_prompt_content:
         system_prompt_content = "You are a helpful AI assistant."
 
-    if not provider or not model_id_for_api:
+    if not model_id_for_api:
         print(
-            f"Error: Incomplete configuration for model '{logical_model_name}'. Missing provider or model_id."
+            f"Error: Incomplete configuration for model '{logical_model_name}'. Missing model_id."
         )
         return None, None, None, None, None
 
-    # Import and initialize the appropriate client
-    if provider == "gemini":
-        from clients.gemini_client import GeminiClient
-
-        client = GeminiClient()
-    elif provider == "gemini_perplexity":
-        from clients.gemini_perplexity_client import GeminiWithPerplexityClient
-
-        client = GeminiWithPerplexityClient()
-    elif provider == "perplexity":
+    client: Optional[BaseLLMClient] = None
+    # Map model names directly to clients (no provider field needed)
+    if logical_model_name == "working_model":
+        from clients.gemini_advanced_client import GeminiAdvancedClient
+        client = GeminiAdvancedClient()
+    elif logical_model_name == "searching_model":
         from clients.perplexity_client import PerplexityClient
-
         client = PerplexityClient()
     else:
-        print(f"Error: Unsupported provider '{provider}' for model '{logical_model_name}'.")
+        print(f"Error: Unknown model '{logical_model_name}'. Expected 'working_model' or 'searching_model'.")
         return None, None, None, None, None
 
     if not client.initialize_client():
         print(
-            f"Warning: {provider.title()} client failed to initialize for model '{logical_model_name}'."
+            f"Warning: Client failed to initialize for model '{logical_model_name}'."
         )
         return None, None, None, None, None
 

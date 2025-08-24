@@ -26,6 +26,7 @@ class Settings:
         # Load configurations
         self.model_configs = self._load_model_configs()
         self._load_routing_config()
+        self._validate_model_configs()
 
     def _load_model_configs(self) -> Dict[str, Any]:
         """Load model configuration from JSON file"""
@@ -33,7 +34,12 @@ class Settings:
         try:
             with open(config_file_path, "r") as f:
                 config_data = json.load(f)
-                return config_data.get("models", {})
+                # Support both old "models" format and new separated format
+                if "models" in config_data:
+                    return config_data["models"]
+                else:
+                    # New format with working_model and searching_model
+                    return config_data
         except Exception as e:
             print(f"Error loading model config: {e}")
             return {}
@@ -65,15 +71,17 @@ class Settings:
 
     def _update_from_config(self, config: Dict[str, Any]):
         """Update properties from YAML config"""
-        # Model routing
+        # Model routing - now models are defined directly in models.json
         routing = config.get("routing", {})
-        self.primary_model = routing.get("primary_model")
-        self.fallback_model = routing.get("fallback_model")
-
-        # If any are None, fall back to environment variables
-        if not all([self.primary_model, self.fallback_model]):
-            print("Some model names missing from config, checking environment variables...")
-            self._fill_missing_from_env()
+        self.search_keywords = routing.get("search_keywords", [])
+        
+        # Models are now directly referenced as working_model and searching_model
+        self.working_model = "working_model"
+        self.searching_model = "searching_model"
+        self.fallback_model = "working_model"  # Use working model as fallback
+        
+        # Backward compatibility
+        self.primary_model = self.working_model
 
         # Simple thresholds
         context_detection = config.get("context_detection", {})
@@ -87,11 +95,14 @@ class Settings:
 
     def _update_from_env(self):
         """Fallback to environment variables"""
-        self.primary_model = os.getenv("PRIMARY_MODEL")
-        self.fallback_model = os.getenv("FALLBACK_MODEL")
-
-        # Apply final defaults only if environment variables are also missing
-        self._fill_missing_from_env()
+        # Models are now fixed references to models.json keys
+        self.working_model = "working_model"
+        self.searching_model = "searching_model"
+        self.fallback_model = "working_model"
+        self.search_keywords = []
+        
+        # Backward compatibility
+        self.primary_model = self.working_model
 
         # Other settings
         self.character_length_threshold = 1500
@@ -99,23 +110,18 @@ class Settings:
         self.log_level = "INFO"
         self.enable_detailed_routing_logs = True
 
-    def _fill_missing_from_env(self):
-        """Fill in any missing values with environment variables or fail if not configured"""
-        self.primary_model = self.primary_model or os.getenv("PRIMARY_MODEL")
-        self.fallback_model = self.fallback_model or os.getenv("FALLBACK_MODEL")
-
-        # Check for missing required configurations
+    def _validate_model_configs(self):
+        """Validate that required models exist in model_configs"""
         missing = []
-        if not self.primary_model:
-            missing.append("primary_model")
-        if not self.fallback_model:
-            missing.append("fallback_model")
+        if "working_model" not in self.model_configs:
+            missing.append("working_model")
+        if "searching_model" not in self.model_configs:
+            missing.append("searching_model")
 
         if missing:
             raise ValueError(
-                f"Missing required model configurations: {', '.join(missing)}. "
-                f"Please configure these in config.yaml or set environment variables: "
-                f"{', '.join([f'{name.upper()}' for name in missing])}"
+                f"Missing required model definitions in models.json: {', '.join(missing)}. "
+                f"Please define these models in your models.json file."
             )
 
     def reload_if_changed(self):

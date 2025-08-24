@@ -2,10 +2,15 @@
 
 # Model Routing Configuration
 routing:
-  primary_model: "Flash-Perplexity"           # Gemini Flash with Perplexity Pro search
-  fallback_model: "Flash-Basic"               # Gemini Flash without search
-  fast_search_model: "Flash-Perplexity-Fast" # For quick searches
-  research_model: "Flash-Perplexity-Research" # For deep research tasks
+  # Keywords that trigger direct search routing
+  search_keywords:
+    - "research"
+    - "look up"
+    - "lookup" 
+    - "look-up"
+    - "search"
+    - "verify"
+    - "`"
   
 # Logging Configuration  
 logging:

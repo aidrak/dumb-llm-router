@@ -1,22 +1,24 @@
 {
-  "models": {
-    "Flash-Perplexity": {
-      "provider": "gemini_perplexity",
-      "model_id": "gemini-2.5-pro",
-      "type": "chat",
-      "parameters": {
-        "enable_perplexity_search": true,
-        "perplexity_config": {
-          "model": "sonar-pro",
-          "endpoint": "https://api.perplexity.ai/chat/completions",
-          "max_tokens": 2000,
-          "temperature": 0.1,
-          "function_name": "search_web",
-          "function_description": "Search the web for current information, recent events, news, facts, or data that may not be in my training data. Use this when users ask about recent events, current data, or when you need to verify information."
-        },
-        "generation_config": {
-          "max_output_tokens": 4096
-        }
+  "working_model": {
+    "model_id": "gemini-2.5-pro",
+    "type": "chat",
+    "parameters": {
+      "enable_reasoning": true,
+      "generation_config": {
+        "max_output_tokens": -1
+      }
+    }
+  },
+  "searching_model": {
+    "model_id": "sonar-pro",
+    "type": "chat",
+    "parameters": {
+      "endpoint": "https://api.perplexity.ai/chat/completions",
+      "max_tokens": 2000,
+      "temperature": 0.1,
+      "system_prompt": "Search the web for real-time information with comprehensive context.",
+      "web_search_options": {
+        "search_context_size": "medium"
       }
     }
   }
